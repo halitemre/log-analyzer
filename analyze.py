@@ -21,7 +21,7 @@ Usage:
     uv run analyze.py --log-file sample-iis.log --models "model-a" "model-b" --output report.txt
 
 LM Studio must be running with the local server enabled (default: http://localhost:1234).
-Recommended CPU-only model: Phi-3 Mini Instruct Q4_K_M (~2.2 GB), or google/gemma-4-e4b.
+Recommended CPU-only model: Phi-3 Mini Instruct Q4_K_M (~2.2 GB), google/gemma-4-e4b, or llama-3.2-3b-instruct.
 """
 
 import argparse
@@ -53,9 +53,10 @@ def query_lm_studio(prompt: str, model: str) -> str:
             json={
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1024,
                 "stream": False,
             },
-            timeout=1200,
+            timeout=2400,
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
@@ -103,12 +104,12 @@ def main():
     was_group.add_argument("--was-slow-ms", type=int, default=1000, metavar="MS",
                            help="WAS slow request threshold in ms (default: 1000)")
 
-    parser.add_argument("--window", type=int, default=60, metavar="MIN",
-                        help="Time window in minutes (default: 60)")
+    parser.add_argument("--window", type=int, default=500, metavar="MIN",
+                        help="Time window in minutes (default: 500)")
     parser.add_argument("--top-n", type=int, default=15,
                         help="Top N items in ranked lists (default: 15)")
-    parser.add_argument("--model", default="llama-3.2-1b-instruct",
-                        help="Model identifier loaded in LM Studio (default: llama-3.2-1b-instruct)")
+    parser.add_argument("--model", default="llama-3.2-3b-instruct",
+                        help="Model identifier loaded in LM Studio (default: llama-3.2-3b-instruct)")
     parser.add_argument("--models", nargs="+", metavar="MODEL",
                         help="Multiple models to query sequentially")
     parser.add_argument("--output", metavar="FILE",
