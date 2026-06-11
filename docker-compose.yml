@@ -28,7 +28,7 @@ services:
     environment:
       - LLM_BASE_URL=http://ollama:11434
     volumes:
-      - C:\inetpub\logs\LogFiles\W3SVC1:/logs/iis:ro
+      - ./logs:/logs/iis:ro
       - ./output:/output
 
 volumes:
