@@ -1,30 +1,27 @@
 """
-Analyze IIS and/or WAS logs and send the summary to a local LM Studio LLM.
+Analyze IIS and/or WAS logs and send the summary to a local Ollama LLM.
 
-Usage:
-    # IIS only
-    uv run analyze.py --log-file sample-iis.log --model "google/gemma-4-e4b"
+Usage (Docker):
+    docker compose run --rm log-analyzer --log-dir /logs/iis --model llama3.2:1b
 
-    # WAS only
-    uv run analyze.py --was-file sample-was.log --model "google/gemma-4-e4b"
+Usage (local):
+    python analyze.py --log-file sample-iis.log --model llama3.2:1b
 
-    # Both together
-    uv run analyze.py --log-file sample-iis.log --was-file sample-was.log --model "google/gemma-4-e4b"
-
-    # Directories (reads all *.log files in each)
-    uv run analyze.py --log-dir "C:\\inetpub\\logs\\W3SVC1" --was-dir "C:\\logs\\was" --model "google/gemma-4-e4b"
+    # Directories
+    python analyze.py --log-dir /logs/iis --was-dir /logs/was --model llama3.2:1b
 
     # Save report
-    uv run analyze.py --log-file sample-iis.log --was-file sample-was.log --model "google/gemma-4-e4b" --output report.txt
+    python analyze.py --log-file sample-iis.log --model llama3.2:1b --output /output/report.txt
 
-    # Compare multiple models sequentially (load each model in LM Studio before confirming)
-    uv run analyze.py --log-file sample-iis.log --models "model-a" "model-b" --output report.txt
+    # Compare multiple models sequentially
+    python analyze.py --log-file sample-iis.log --models llama3.2:1b qwen2.5:3b --output /output/report.txt
 
-LM Studio must be running with the local server enabled (default: http://localhost:1234).
-Recommended CPU-only model: Phi-3 Mini Instruct Q4_K_M (~2.2 GB), google/gemma-4-e4b, or llama-3.2-3b-instruct.
+LLM base URL is read from LLM_BASE_URL env var (default: http://localhost:11434).
+In Docker the compose file sets LLM_BASE_URL=http://ollama:11434 automatically.
 """
 
 import argparse
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -32,7 +29,8 @@ import requests
 
 from aggregator import build_summary, render_text
 
-LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
+_BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434")
+LLM_URL = f"{_BASE_URL}/v1/chat/completions"
 
 SYSTEM_PROMPT = """\
 You are a server operations analyst. Analyze the web server log summary below (IIS and/or WAS logs).
@@ -46,10 +44,10 @@ Be brief. Only mention what the data actually shows.\
 """
 
 
-def query_lm_studio(prompt: str, model: str) -> str:
+def query_llm(prompt: str, model: str) -> str:
     try:
         resp = requests.post(
-            LM_STUDIO_URL,
+            LLM_URL,
             json={
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
@@ -62,14 +60,13 @@ def query_lm_studio(prompt: str, model: str) -> str:
         return resp.json()["choices"][0]["message"]["content"]
     except requests.exceptions.ConnectionError:
         sys.exit(
-            "ERROR: Cannot connect to LM Studio at http://localhost:1234\n"
-            "Make sure LM Studio is running and the local server is enabled.\n"
-            "In LM Studio: Local Server tab -> Start Server"
+            f"ERROR: Cannot connect to Ollama at {LLM_URL}\n"
+            "Make sure Ollama is running. In Docker: docker compose up ollama -d"
         )
     except requests.exceptions.HTTPError as e:
         sys.exit(
-            f"ERROR: LM Studio returned an error: {e}\n"
-            "Make sure the model is loaded in LM Studio before running."
+            f"ERROR: Ollama returned an error: {e}\n"
+            "Check the model is pulled: docker compose run --rm model-init"
         )
 
 
@@ -86,7 +83,7 @@ def save_report(path: str, model: str, log_block: str, analysis: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze IIS and/or WAS logs with a local LLM via LM Studio.",
+        description="Analyze IIS and/or WAS logs with a local Ollama LLM.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -108,8 +105,8 @@ def main():
                         help="Time window in minutes (default: 500)")
     parser.add_argument("--top-n", type=int, default=15,
                         help="Top N items in ranked lists (default: 15)")
-    parser.add_argument("--model", default="llama-3.2-3b-instruct",
-                        help="Model identifier loaded in LM Studio (default: llama-3.2-3b-instruct)")
+    parser.add_argument("--model", default="llama3.2:1b",
+                        help="Ollama model name (default: llama3.2:1b)")
     parser.add_argument("--models", nargs="+", metavar="MODEL",
                         help="Multiple models to query sequentially")
     parser.add_argument("--output", metavar="FILE",
@@ -149,7 +146,7 @@ def main():
     if len(models) == 1:
         model = models[0]
         print(f"\n--- ANALYSIS FROM {model.upper()} ---")
-        analysis = query_lm_studio(full_prompt, model)
+        analysis = query_llm(full_prompt, model)
         print(analysis)
         if args.output:
             save_report(args.output, model, log_block, analysis)
@@ -161,7 +158,7 @@ def main():
     results: dict[str, str] = {}
     for model in models:
         print(f"  -> Querying {model} ...")
-        results[model] = query_lm_studio(full_prompt, model)
+        results[model] = query_llm(full_prompt, model)
         print(f"  -> {model} done.")
 
     for model in models:

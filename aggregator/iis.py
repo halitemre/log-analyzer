@@ -150,36 +150,61 @@ def aggregate_iis(
 
     endpoint_times: dict[str, list[int]] = defaultdict(list)
     endpoint_errors: dict[str, int] = defaultdict(int)
-    ip_requests: dict[str, int] = defaultdict(int)
-    ip_endpoints: dict[str, set] = defaultdict(set)
-    ip_errors: dict[str, int] = defaultdict(int)
+    endpoint_bytes: dict[str, int] = defaultdict(int)
     status_counts: dict[str, int] = defaultdict(int)
+    substatus_counts: dict[str, int] = defaultdict(int)
     ua_counts: dict[str, int] = defaultdict(int)
+    method_counts: dict[str, int] = defaultdict(int)
+    username_counts: dict[str, int] = defaultdict(int)
+    total_bytes_sent = 0
+    total_bytes_received = 0
 
     for e in entries:
         endpoint = e.get("cs-uri-stem", "-")
         status = e.get("sc-status", "-")
-        ip = e.get("c-ip", "-")
+        substatus = e.get("sc-substatus", "-")
         ua = e.get("cs(User-Agent)", "-")
+        method = e.get("cs-method", "-")
+        username = e.get("cs-username", "-")
 
         try:
             time_ms = int(e.get("time-taken", 0))
         except (ValueError, TypeError):
             time_ms = 0
 
+        try:
+            bytes_sent = int(e.get("sc-bytes", 0))
+        except (ValueError, TypeError):
+            bytes_sent = 0
+
+        try:
+            bytes_recv = int(e.get("cs-bytes", 0))
+        except (ValueError, TypeError):
+            bytes_recv = 0
+
         is_error = status and status[:1] in ("4", "5")
 
         endpoint_times[endpoint].append(time_ms)
+        endpoint_bytes[endpoint] += bytes_sent
         if is_error:
             endpoint_errors[endpoint] += 1
 
-        ip_requests[ip] += 1
-        ip_endpoints[ip].add(endpoint)
-        if is_error:
-            ip_errors[ip] += 1
-
         status_counts[status] += 1
+
+        if substatus not in ("-", "0"):
+            key = f"{status}.{substatus}"
+            substatus_counts[key] += 1
+
         ua_counts[ua] += 1
+
+        if method != "-":
+            method_counts[method] += 1
+
+        if username != "-":
+            username_counts[username] += 1
+
+        total_bytes_sent += bytes_sent
+        total_bytes_received += bytes_recv
 
     total = len(entries)
 
@@ -200,24 +225,26 @@ def aggregate_iis(
                 "p99_ms": int(p99),
                 "error_count": err,
                 "error_rate_pct": round(err / len(times) * 100, 1),
+                "bytes_sent": endpoint_bytes[ep],
             }
         )
     slow_endpoints.sort(key=lambda x: x["p95_ms"], reverse=True)
 
-    # --- top IPs ---
-    top_ips = sorted(ip_requests.items(), key=lambda x: x[1], reverse=True)[:top_n]
-    top_ips_detail = [
-        {
-            "ip": ip,
-            "request_count": count,
-            "unique_endpoints": len(ip_endpoints[ip]),
-            "error_count": ip_errors[ip],
-        }
-        for ip, count in top_ips
-    ]
-
     # --- top user agents ---
     top_uas = sorted(ua_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # --- top endpoints by bytes sent ---
+    top_endpoints_by_bytes = sorted(
+        [
+            {"endpoint": ep, "total_bytes_sent": b, "request_count": len(endpoint_times[ep])}
+            for ep, b in endpoint_bytes.items()
+        ],
+        key=lambda x: x["total_bytes_sent"],
+        reverse=True,
+    )[:top_n]
+
+    # --- top authenticated usernames ---
+    top_usernames = sorted(username_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
     error_4xx = sum(v for k, v in status_counts.items() if k.startswith("4"))
     error_5xx = sum(v for k, v in status_counts.items() if k.startswith("5"))
@@ -230,6 +257,7 @@ def aggregate_iis(
         "window_end": window_end,
         "total_requests": total,
         "status_summary": dict(sorted(status_counts.items())),
+        "substatus_summary": dict(sorted(substatus_counts.items(), key=lambda x: x[1], reverse=True)),
         "error_4xx_count": error_4xx,
         "error_5xx_count": error_5xx,
         "error_rate_pct": round((error_4xx + error_5xx) / total * 100, 1) if total else 0.0,
@@ -237,9 +265,13 @@ def aggregate_iis(
             1 for times in endpoint_times.values() for t in times if t >= slow_threshold_ms
         ),
         "slow_threshold_ms": slow_threshold_ms,
+        "method_summary": dict(sorted(method_counts.items())),
+        "total_bytes_sent": total_bytes_sent,
+        "total_bytes_received": total_bytes_received,
         "slow_endpoints": slow_endpoints[:top_n],
-        "top_ips": top_ips_detail,
+        "top_endpoints_by_bytes": top_endpoints_by_bytes,
         "top_user_agents": [{"user_agent": ua, "count": c} for ua, c in top_uas],
+        "top_usernames": [{"username": u, "count": c} for u, c in top_usernames],
     }
 
 
@@ -249,12 +281,17 @@ def _empty_iis_summary(slow_threshold_ms: int) -> dict:
         "window_end": None,
         "total_requests": 0,
         "status_summary": {},
+        "substatus_summary": {},
         "error_4xx_count": 0,
         "error_5xx_count": 0,
         "error_rate_pct": 0.0,
         "requests_above_threshold_ms": 0,
         "slow_threshold_ms": slow_threshold_ms,
+        "method_summary": {},
+        "total_bytes_sent": 0,
+        "total_bytes_received": 0,
         "slow_endpoints": [],
-        "top_ips": [],
+        "top_endpoints_by_bytes": [],
         "top_user_agents": [],
+        "top_usernames": [],
     }

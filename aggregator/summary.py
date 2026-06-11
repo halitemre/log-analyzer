@@ -10,6 +10,14 @@ from .iis import aggregate_iis, parse_iis_directory, parse_iis_log
 from .was import aggregate_was, parse_was_directory, parse_was_log
 
 
+def _fmt_bytes(n: int) -> str:
+    if n >= 1_048_576:
+        return f"{n / 1_048_576:.1f} MB"
+    if n >= 1_024:
+        return f"{n / 1_024:.1f} KB"
+    return f"{n} B"
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -105,6 +113,18 @@ def render_text(summary: dict, max_slow_endpoints: int = 10) -> str:
         )
         lines.append(f"Status breakdown: {json.dumps(iis['status_summary'])}")
 
+        if iis.get("substatus_summary"):
+            lines.append(f"Substatus codes: {json.dumps(iis['substatus_summary'])}")
+
+        if iis.get("method_summary"):
+            lines.append(f"HTTP methods   : {json.dumps(iis['method_summary'])}")
+
+        if iis.get("total_bytes_sent") or iis.get("total_bytes_received"):
+            lines.append(
+                f"Bandwidth      : sent={_fmt_bytes(iis['total_bytes_sent'])}  "
+                f"received={_fmt_bytes(iis['total_bytes_received'])}"
+            )
+
         if iis["slow_endpoints"]:
             lines.append(
                 f"\nTop {min(max_slow_endpoints, len(iis['slow_endpoints']))} "
@@ -118,17 +138,22 @@ def render_text(summary: dict, max_slow_endpoints: int = 10) -> str:
                     f"p95={ep['p95_ms']}ms  "
                     f"p99={ep['p99_ms']}ms  "
                     f"errors={ep['error_count']} ({ep['error_rate_pct']}%)"
+                    + (f"  sent={_fmt_bytes(ep['bytes_sent'])}" if ep.get("bytes_sent") else "")
                 )
 
-        if iis["top_ips"]:
-            lines.append("\nTop IPs by request count:")
-            for ip_entry in iis["top_ips"][:10]:
+        if iis.get("top_endpoints_by_bytes"):
+            lines.append(f"\nTop {min(max_slow_endpoints, len(iis['top_endpoints_by_bytes']))} endpoints by bytes sent:")
+            for ep in iis["top_endpoints_by_bytes"][:max_slow_endpoints]:
                 lines.append(
-                    f"  {ip_entry['ip']:<20}  "
-                    f"reqs={ip_entry['request_count']}  "
-                    f"endpoints={ip_entry['unique_endpoints']}  "
-                    f"errors={ip_entry['error_count']}"
+                    f"  {ep['endpoint']:<45} "
+                    f"sent={_fmt_bytes(ep['total_bytes_sent'])}  "
+                    f"reqs={ep['request_count']}"
                 )
+
+        if iis.get("top_usernames"):
+            lines.append("\nTop authenticated users:")
+            for u in iis["top_usernames"][:10]:
+                lines.append(f"  {u['username']:<30}  reqs={u['count']}")
 
     # ---- WAS section ----
     was = summary.get("was")

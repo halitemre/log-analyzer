@@ -1,0 +1,35 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  model-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    command: pull llama3.2:1b
+    restart: "no"
+
+  log-analyzer:
+    build: .
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - LLM_BASE_URL=http://ollama:11434
+    volumes:
+      - C:\inetpub\logs\LogFiles\W3SVC1:/logs/iis:ro
+      - ./output:/output
+
+volumes:
+  ollama_models:
