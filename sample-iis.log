@@ -1,5 +1,5 @@
 ﻿#Software: Microsoft Internet Information Services 10.0
-#Version: 1.0
+#Version: 1.0 
 #Date: 2026-06-18 00:00:00
 #Fields: date time c-ip cs-uri-stem cs-uri-query sc-status time-taken cs(User-Agent)
 2026-06-18 10:00:01 192.168.1.10 /api/products - 200 45 Mozilla/5.0+(Windows+NT+10.0)
