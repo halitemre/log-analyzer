@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-analyzer
+spec:
+  schedule: "0 8 * * *"  # Daily at 08:00 UTC — adjust to your timezone
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: log-analyzer
+              image: halitemre/log-analyzer:latest  # TODO: replace with your Docker Hub username
+              env:
+                - name: LLM_BASE_URL
+                  value: http://ollama:11434
+              args:
+                - --log-dir
+                - /logs/iis
+                - --window
+                - "1440"
+                - --output
+                - /output/report.txt
+              volumeMounts:
+                - name: logs
+                  mountPath: /logs/iis
+                  readOnly: true
+                - name: output
+                  mountPath: /output
+          volumes:
+            - name: logs
+              # TODO: Replace emptyDir with a real PVC when log source is decided
+              emptyDir: {}
+            - name: output
+              emptyDir: {}

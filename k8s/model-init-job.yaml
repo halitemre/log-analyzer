@@ -1,0 +1,15 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-init
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: model-init
+          image: ollama/ollama:latest
+          env:
+            - name: OLLAMA_HOST
+              value: http://ollama:11434
+          command: ["ollama", "pull", "llama3.2:1b"]

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - containerPort: 11434
+          volumeMounts:
+            - name: ollama-models
+              mountPath: /root/.ollama
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2"
+            limits:
+              memory: "8Gi"
+              cpu: "4"
+          readinessProbe:
+            exec:
+              command: ["ollama", "list"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: ollama-models
+          persistentVolumeClaim:
+            claimName: ollama-models
+      # OpenShift: if blocked by SCC, uncomment:
+      # securityContext:
+      #   runAsUser: 1000
+      #   fsGroup: 1000

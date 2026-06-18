@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # Uncomment the storageClassName for your platform:
+  # storageClassName: gp2          # AWS EKS (EBS)
+  # storageClassName: gp3-csi      # OpenShift on AWS
+  # storageClassName: standard     # Google GKE
