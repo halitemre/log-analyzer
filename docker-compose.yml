@@ -29,6 +29,7 @@ services:
       - LLM_BASE_URL=http://ollama:11434
     volumes:
       - ./logs:/logs/iis:ro
+      - .:/app/host:ro
       - ./output:/output
 
 volumes:
