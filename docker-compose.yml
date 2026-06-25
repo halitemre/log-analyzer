@@ -17,7 +17,7 @@ services:
         condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    command: pull llama3.2:1b
+    command: pull qwen/qwen3.5-9b
     restart: "no"
 
   log-analyzer:

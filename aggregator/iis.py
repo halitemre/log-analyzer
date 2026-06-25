@@ -153,7 +153,10 @@ def aggregate_iis(
     endpoint_bytes: dict[str, int] = defaultdict(int)
     status_counts: dict[str, int] = defaultdict(int)
     substatus_counts: dict[str, int] = defaultdict(int)
+    win32_counts: dict[str, int] = defaultdict(int)
     ua_counts: dict[str, int] = defaultdict(int)
+    ua_errors: dict[str, int] = defaultdict(int)
+    ua_bytes: dict[str, int] = defaultdict(int)
     method_counts: dict[str, int] = defaultdict(int)
     username_counts: dict[str, int] = defaultdict(int)
     total_bytes_sent = 0
@@ -163,6 +166,7 @@ def aggregate_iis(
         endpoint = e.get("cs-uri-stem", "-")
         status = e.get("sc-status", "-")
         substatus = e.get("sc-substatus", "-")
+        win32 = e.get("sc-win32-status", "0")
         ua = e.get("cs(User-Agent)", "-")
         method = e.get("cs-method", "-")
         username = e.get("cs-username", "-")
@@ -195,7 +199,13 @@ def aggregate_iis(
             key = f"{status}.{substatus}"
             substatus_counts[key] += 1
 
+        if win32 not in ("-", "0"):
+            win32_counts[win32] += 1
+
         ua_counts[ua] += 1
+        ua_bytes[ua] += bytes_sent
+        if is_error:
+            ua_errors[ua] += 1
 
         if method != "-":
             method_counts[method] += 1
@@ -230,8 +240,18 @@ def aggregate_iis(
         )
     slow_endpoints.sort(key=lambda x: x["p95_ms"], reverse=True)
 
-    # --- top user agents ---
+    # --- top user agents with error rate and bytes ---
     top_uas = sorted(ua_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_ua_details = [
+        {
+            "user_agent": ua,
+            "count": c,
+            "error_count": ua_errors[ua],
+            "error_rate_pct": round(ua_errors[ua] / c * 100, 1),
+            "bytes_sent": ua_bytes[ua],
+        }
+        for ua, c in top_uas
+    ]
 
     # --- top endpoints by bytes sent ---
     top_endpoints_by_bytes = sorted(
@@ -258,6 +278,7 @@ def aggregate_iis(
         "total_requests": total,
         "status_summary": dict(sorted(status_counts.items())),
         "substatus_summary": dict(sorted(substatus_counts.items(), key=lambda x: x[1], reverse=True)),
+        "win32_error_summary": dict(sorted(win32_counts.items(), key=lambda x: x[1], reverse=True)),
         "error_4xx_count": error_4xx,
         "error_5xx_count": error_5xx,
         "error_rate_pct": round((error_4xx + error_5xx) / total * 100, 1) if total else 0.0,
@@ -270,7 +291,7 @@ def aggregate_iis(
         "total_bytes_received": total_bytes_received,
         "slow_endpoints": slow_endpoints[:top_n],
         "top_endpoints_by_bytes": top_endpoints_by_bytes,
-        "top_user_agents": [{"user_agent": ua, "count": c} for ua, c in top_uas],
+        "top_user_agents": top_ua_details,
         "top_usernames": [{"username": u, "count": c} for u, c in top_usernames],
     }
 
@@ -282,6 +303,7 @@ def _empty_iis_summary(slow_threshold_ms: int) -> dict:
         "total_requests": 0,
         "status_summary": {},
         "substatus_summary": {},
+        "win32_error_summary": {},
         "error_4xx_count": 0,
         "error_5xx_count": 0,
         "error_rate_pct": 0.0,

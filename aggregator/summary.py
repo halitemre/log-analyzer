@@ -116,6 +116,9 @@ def render_text(summary: dict, max_slow_endpoints: int = 10) -> str:
         if iis.get("substatus_summary"):
             lines.append(f"Substatus codes: {json.dumps(iis['substatus_summary'])}")
 
+        if iis.get("win32_error_summary"):
+            lines.append(f"Win32 errors   : {json.dumps(iis['win32_error_summary'])}")
+
         if iis.get("method_summary"):
             lines.append(f"HTTP methods   : {json.dumps(iis['method_summary'])}")
 
@@ -148,6 +151,16 @@ def render_text(summary: dict, max_slow_endpoints: int = 10) -> str:
                     f"  {ep['endpoint']:<45} "
                     f"sent={_fmt_bytes(ep['total_bytes_sent'])}  "
                     f"reqs={ep['request_count']}"
+                )
+
+        if iis.get("top_user_agents"):
+            lines.append("\nTop user agents:")
+            for ua in iis["top_user_agents"][:10]:
+                lines.append(
+                    f"  {ua['user_agent'][:60]:<60}  "
+                    f"reqs={ua['count']}  "
+                    f"errors={ua['error_count']} ({ua['error_rate_pct']}%)  "
+                    f"sent={_fmt_bytes(ua['bytes_sent'])}"
                 )
 
         if iis.get("top_usernames"):

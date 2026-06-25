@@ -44,20 +44,24 @@ Be brief. Only mention what the data actually shows.\
 """
 
 
-def query_llm(prompt: str, model: str) -> str:
+def query_llm(prompt: str, model: str, no_thinking: bool = False) -> str:
+    payload: dict = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 4096,
+        "stream": False,
+    }
+    if no_thinking:
+        payload["enable_thinking"] = False
     try:
-        resp = requests.post(
-            LLM_URL,
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 1024,
-                "stream": False,
-            },
-            timeout=2400,
-        )
+        resp = requests.post(LLM_URL, json=payload, timeout=2400)
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        # Qwen3 thinking models may return content only in reasoning_content
+        if not content:
+            content = data["choices"][0]["message"].get("reasoning_content", "")
+        return content or "(model returned empty response)"
     except requests.exceptions.ConnectionError:
         sys.exit(
             f"ERROR: Cannot connect to Ollama at {LLM_URL}\n"
@@ -101,16 +105,18 @@ def main():
     was_group.add_argument("--was-slow-ms", type=int, default=1000, metavar="MS",
                            help="WAS slow request threshold in ms (default: 1000)")
 
-    parser.add_argument("--window", type=int, default=500, metavar="MIN",
-                        help="Time window in minutes (default: 500)")
+    parser.add_argument("--window", type=int, default=1440, metavar="MIN",
+                        help="Time window in minutes (default: 1440)")
     parser.add_argument("--top-n", type=int, default=15,
                         help="Top N items in ranked lists (default: 15)")
-    parser.add_argument("--model", default="llama3.2:1b",
-                        help="Ollama model name (default: llama3.2:1b)")
+    parser.add_argument("--model", default="qwen/qwen3.5-9b",
+                        help="LLM model name (default: qwen/qwen3.5-9b)")
     parser.add_argument("--models", nargs="+", metavar="MODEL",
                         help="Multiple models to query sequentially")
     parser.add_argument("--output", metavar="FILE",
                         help="Save report(s) to this path (multi-model: appends _modelname.txt)")
+    parser.add_argument("--no-thinking", action="store_true",
+                        help="Disable thinking mode for Qwen3 and similar models")
 
     args = parser.parse_args()
 
@@ -146,7 +152,7 @@ def main():
     if len(models) == 1:
         model = models[0]
         print(f"\n--- ANALYSIS FROM {model.upper()} ---")
-        analysis = query_llm(full_prompt, model)
+        analysis = query_llm(full_prompt, model, no_thinking=args.no_thinking)
         print(analysis)
         if args.output:
             save_report(args.output, model, log_block, analysis)
@@ -158,7 +164,7 @@ def main():
     results: dict[str, str] = {}
     for model in models:
         print(f"  -> Querying {model} ...")
-        results[model] = query_llm(full_prompt, model)
+        results[model] = query_llm(full_prompt, model, no_thinking=args.no_thinking)
         print(f"  -> {model} done.")
 
     for model in models:
