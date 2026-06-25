@@ -109,8 +109,8 @@ def main():
                         help="Time window in minutes (default: 1440)")
     parser.add_argument("--top-n", type=int, default=15,
                         help="Top N items in ranked lists (default: 15)")
-    parser.add_argument("--model", default="qwen/qwen3.5-9b",
-                        help="LLM model name (default: qwen/qwen3.5-9b)")
+    parser.add_argument("--model", default="qwen3:9b",
+                        help="LLM model name (default: qwen3:9b)")
     parser.add_argument("--models", nargs="+", metavar="MODEL",
                         help="Multiple models to query sequentially")
     parser.add_argument("--output", metavar="FILE",
